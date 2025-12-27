@@ -2,6 +2,11 @@
 
 Whene generating your GitHub PAT you will need to include `repo`, `workflow`, and `admin:org` permissions.
 
+## create network
+
+```bash
+docker network create runner
+```
 
 
 ## first run
