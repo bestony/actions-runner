@@ -1,6 +1,6 @@
 services:
   runner:
-    build: .
+    image: bestony/actions-runner:latest
     restart: unless-stopped
     networks:
       - backend
