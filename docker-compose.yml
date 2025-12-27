@@ -3,8 +3,11 @@ services:
     image: bestony/actions-runner:latest
     restart: unless-stopped
     networks:
-      - backend
-    env_file: .env
+      - runner
+    environment:
+      - REPO=<owner>/<repo>
+      - TOKEN=<your-github-personal-access-token>
+      - ACTIONS_RESULTS_URL=http://cache:3000/
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
@@ -18,9 +21,9 @@ services:
     image: ghcr.io/falcondev-oss/github-actions-cache-server:latest
     restart: unless-stopped
     networks:
-      - backend
+      - runner
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
       API_BASE_URL: http://cache:3000
     volumes:
@@ -30,5 +33,5 @@ volumes:
   cache:
 
 networks:
-    runner:
-        external: true
+  runner:
+    external: true

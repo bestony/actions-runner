@@ -7,3 +7,46 @@ Credit to [testdriven.io](https://testdriven.io/blog/github-actions-docker/) for
 
 Whene generating your GitHub PAT you will need to include `repo`, `workflow`, and `admin:org` permissions.
 
+
+
+## first run
+
+```yaml
+services:
+  runner:
+    image: bestony/actions-runner:latest
+    restart: unless-stopped
+    networks:
+      - runner
+    environment:
+      - REPO=<owner>/<repo>
+      - TOKEN=<your-github-personal-access-token>
+      - ACTIONS_RESULTS_URL=http://cache:3000/
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      mode: replicated
+      replicas: 4
+      resources:
+        reservations:
+          cpus: 0.5
+          memory: 1024M
+  cache:
+    image: ghcr.io/falcondev-oss/github-actions-cache-server:latest
+    restart: unless-stopped
+    networks:
+      - runner
+    ports:
+      - "3000:3000"
+    environment:
+      API_BASE_URL: http://cache:3000
+    volumes:
+      - cache:/app/.data
+
+volumes:
+  cache:
+
+networks:
+  runner:
+    external: true
+```
