@@ -34,6 +34,7 @@ services:
   cache:
     image: ghcr.io/falcondev-oss/github-actions-cache-server:latest
     restart: unless-stopped
+    container_name: cache
     networks:
       - runner
     ports:
@@ -49,4 +50,24 @@ volumes:
 networks:
   runner:
     external: true
+```
+
+
+## other run
+```yaml
+services:
+  another-runner:
+    image: bestony/actions-runner:latest
+    networks:
+      - runner
+    environment:
+      - REPO=<another-repo>
+      - TOKEN=<your-token>
+      - ACTIONS_RESULTS_URL=http://cache:3000/
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  runner:
+    external: true # 声明这是一个外部已存在的网络
 ```
