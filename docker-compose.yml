@@ -16,7 +16,10 @@ services:
       resources:
         reservations:
           cpus: 0.5
-          memory: 1024M
+          memory: 1024
+        limits:
+          cpus: '2.0'    # 即使服务器有 12 线程，单个容器最多也只能用 2 核的量
+          memory: 4096M  # 单个容器最多用 4GB，超过就会被重启，保护宿主机
   cache:
     image: ghcr.io/falcondev-oss/github-actions-cache-server:latest
     restart: unless-stopped
