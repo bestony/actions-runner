@@ -1,0 +1,31 @@
+services:
+  runner:
+    image: bestony/actions-runner:latest
+    restart: unless-stopped
+    isolation: ${WINDOWS_CONTAINER_ISOLATION:-process}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RUNNER_URL: ${RUNNER_URL:-}
+      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN:-}
+      REPO: ${REPO:-}
+      TOKEN: ${TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-}
+      RUNNER_LABELS: ${RUNNER_LABELS:-}
+      RUNNER_WORKDIR: ${RUNNER_WORKDIR:-_work}
+      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-false}
+    volumes:
+      - type: npipe
+        source: \\.\pipe\docker_engine
+        target: \\.\pipe\docker_engine
+    deploy:
+      mode: replicated
+      replicas: ${RUNNER_REPLICAS:-1}
+      resources:
+        reservations:
+          cpus: "${RUNNER_RESERVED_CPUS:-0.5}"
+          memory: ${RUNNER_RESERVED_MEMORY:-1024M}
+        limits:
+          cpus: "${RUNNER_LIMIT_CPUS:-2.0}"
+          memory: ${RUNNER_LIMIT_MEMORY:-4096M}

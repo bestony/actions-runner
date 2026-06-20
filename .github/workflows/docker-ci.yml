@@ -15,7 +15,7 @@ env:
   RUNNER_VERSION: "2.335.1"
 
 jobs:
-  docker:
+  static:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,11 +26,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
-      - name: Lint startup script
+      - name: Lint Linux startup script
         run: shellcheck start.sh
 
-      - name: Validate Compose file
+      - name: Test Linux startup script
+        run: bash tests/start-linux.sh
+
+      - name: Validate Linux Compose file
         run: docker compose config
+
+      - name: Check Windows startup script syntax
+        shell: pwsh
+        run: |
+          $null = [scriptblock]::Create((Get-Content .\start.ps1 -Raw))
+
+  linux:
+    runs-on: ubuntu-latest
+    needs: static
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            suffix: linux-amd64
+          - platform: linux/arm64
+            suffix: linux-arm64
+          - platform: linux/arm/v7
+            suffix: linux-arm-v7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -45,24 +70,153 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ env.RUNNER_VERSION }},enable={{is_default_branch}}
-            type=sha,prefix=
-            type=ref,event=tag
+      - name: Compute platform tag
+        id: tag
+        shell: bash
+        run: |
+          echo "value=${IMAGE_NAME}:${RUNNER_VERSION}-${{ matrix.suffix }}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build Docker image
+      - name: Build Linux image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tag.outputs.value }}
           build-args: |
             RUNNER_VERSION=${{ env.RUNNER_VERSION }}
+
+  windows-amd64:
+    runs-on: windows-2022
+    needs: static
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Windows Compose file
+        shell: pwsh
+        run: docker compose -f docker-compose.windows.yml config
+
+      - name: Test Windows startup script
+        shell: pwsh
+        run: .\tests\start-windows.ps1
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Windows x64 image
+        shell: pwsh
+        run: |
+          $image = "${env:IMAGE_NAME}:${env:RUNNER_VERSION}-windows-ltsc2022-amd64"
+          docker build `
+            --file Dockerfile.windows `
+            --build-arg TARGETARCH=amd64 `
+            --build-arg RUNNER_VERSION="${env:RUNNER_VERSION}" `
+            --tag $image `
+            .
+
+          if ("${{ github.event_name }}" -ne "pull_request") {
+            docker push $image
+          }
+
+  windows-arm64:
+    runs-on: windows-2022
+    needs: static
+    outputs:
+      published: ${{ steps.result.outputs.published }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build experimental Windows ARM64 image
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $image = "${env:IMAGE_NAME}:${env:RUNNER_VERSION}-windows-ltsc2022-arm64"
+          docker build `
+            --file Dockerfile.windows `
+            --platform windows/arm64 `
+            --build-arg TARGETARCH=arm64 `
+            --build-arg RUNNER_VERSION="${env:RUNNER_VERSION}" `
+            --tag $image `
+            .
+
+          if ("${{ github.event_name }}" -ne "pull_request") {
+            docker push $image
+          }
+
+      - name: Record experimental Windows ARM64 status
+        id: result
+        shell: pwsh
+        run: |
+          if ("${{ steps.build.outcome }}" -eq "success" -and "${{ github.event_name }}" -ne "pull_request") {
+            "published=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "published=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Experimental Windows ARM64 image was not published; skipping it in the manifest."
+          }
+
+  publish-manifest:
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event_name != 'pull_request' && needs.linux.result == 'success' && needs.windows-amd64.result == 'success' }}
+    needs:
+      - linux
+      - windows-amd64
+      - windows-arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create multi-OS manifests
+        shell: bash
+        env:
+          WINDOWS_ARM64_PUBLISHED: ${{ needs.windows-arm64.outputs.published }}
+        run: |
+          set -Eeuo pipefail
+
+          sources=(
+            "${IMAGE_NAME}:${RUNNER_VERSION}-linux-amd64"
+            "${IMAGE_NAME}:${RUNNER_VERSION}-linux-arm64"
+            "${IMAGE_NAME}:${RUNNER_VERSION}-linux-arm-v7"
+            "${IMAGE_NAME}:${RUNNER_VERSION}-windows-ltsc2022-amd64"
+          )
+
+          if [[ "${WINDOWS_ARM64_PUBLISHED}" == "true" ]]; then
+            sources+=("${IMAGE_NAME}:${RUNNER_VERSION}-windows-ltsc2022-arm64")
+          else
+            echo "Experimental Windows ARM64 image was not published; skipping it in the manifest."
+          fi
+
+          tags=("${IMAGE_NAME}:$(git rev-parse --short=12 HEAD)")
+          if [[ "${GITHUB_REF}" == "refs/heads/${GITHUB_DEFAULT_BRANCH}" ]]; then
+            tags+=("${IMAGE_NAME}:latest" "${IMAGE_NAME}:${RUNNER_VERSION}")
+          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tags+=("${IMAGE_NAME}:${GITHUB_REF_NAME}")
+          fi
+
+          for tag in "${tags[@]}"; do
+            echo "Publishing manifest ${tag}"
+            docker buildx imagetools create --tag "${tag}" "${sources[@]}"
+          done

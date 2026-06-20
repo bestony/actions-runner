@@ -2,8 +2,10 @@ FROM ubuntu:24.04
 
 ARG RUNNER_VERSION="2.335.1"
 ARG TARGETARCH
+ARG TARGETVARIANT
 ARG RUNNER_X64_SHA256="4ef2f25285f0ae4477f1fe1e346db76d2f3ebf03824e2ddd1973a2819bf6c8cf"
 ARG RUNNER_ARM64_SHA256="6d1e85bfd1a506a8b17c1f1b9b57dba458ffed90898799aaa9f599520b0d9207"
+ARG RUNNER_ARM_SHA256="d9810476ceebb6739913ed16afd5c61664e53312a444ee5226e9010a4219a864"
 ARG NODE_VERSION="22.13.0"
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -55,6 +57,12 @@ RUN apt-get update \
     && case "${TARGETARCH}" in \
         amd64) runner_arch="x64"; runner_sha256="${RUNNER_X64_SHA256}" ;; \
         arm64) runner_arch="arm64"; runner_sha256="${RUNNER_ARM64_SHA256}" ;; \
+        arm) \
+            if [ "${TARGETVARIANT}" != "v7" ]; then \
+                echo "Unsupported target architecture variant: linux/arm/${TARGETVARIANT}. Only linux/arm/v7 is supported." >&2; \
+                exit 1; \
+            fi; \
+            runner_arch="arm"; runner_sha256="${RUNNER_ARM_SHA256}" ;; \
         *) echo "Unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \

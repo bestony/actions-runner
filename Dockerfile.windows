@@ -1,0 +1,42 @@
+# escape=`
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+ARG RUNNER_VERSION="2.335.1"
+ARG TARGETARCH
+ARG RUNNER_WIN_X64_SHA256="eb65c95277af42bcf3778a799c41359d224ba2a67b4de26b7cea1729b09c803d"
+ARG RUNNER_WIN_ARM64_SHA256="6cd1409daad8be4f77deb0c677ceb6153fccbab2e33af4fdc1b3465bd42ec742"
+
+LABEL org.opencontainers.image.title="Dockerized GitHub Actions Runner for Windows" `
+      org.opencontainers.image.description="Windows Server Core self-hosted GitHub Actions runner for Windows container workloads." `
+      org.opencontainers.image.source="https://github.com/bestony/actions-runner" `
+      org.opencontainers.image.licenses="MIT" `
+      org.opencontainers.image.version="${RUNNER_VERSION}"
+
+SHELL ["powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+
+WORKDIR C:\actions-runner
+
+RUN $ErrorActionPreference = 'Stop'; `
+    if ($env:TARGETARCH -eq 'amd64') { `
+        $runnerArch = 'x64'; `
+        $runnerSha256 = $env:RUNNER_WIN_X64_SHA256; `
+    } elseif ($env:TARGETARCH -eq 'arm64') { `
+        $runnerArch = 'arm64'; `
+        $runnerSha256 = $env:RUNNER_WIN_ARM64_SHA256; `
+    } else { `
+        throw "Unsupported target architecture: $env:TARGETARCH"; `
+    }; `
+    $runnerZip = 'C:\actions-runner.zip'; `
+    $runnerUrl = "https://github.com/actions/runner/releases/download/v$($env:RUNNER_VERSION)/actions-runner-win-$runnerArch-$($env:RUNNER_VERSION).zip"; `
+    Write-Host "Downloading $runnerUrl"; `
+    Invoke-WebRequest -UseBasicParsing -Uri $runnerUrl -OutFile $runnerZip; `
+    $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $runnerZip).Hash.ToLowerInvariant(); `
+    if ($actualSha256 -ne $runnerSha256.ToLowerInvariant()) { `
+        throw "Checksum mismatch for $runnerZip. Expected $runnerSha256 but got $actualSha256."; `
+    }; `
+    Expand-Archive -LiteralPath $runnerZip -DestinationPath 'C:\actions-runner' -Force; `
+    Remove-Item -LiteralPath $runnerZip -Force
+
+COPY start.ps1 C:/actions-runner/start.ps1
+
+ENTRYPOINT ["powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\actions-runner\\start.ps1"]

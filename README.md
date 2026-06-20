@@ -2,7 +2,9 @@
 
 Dockerized GitHub Actions self-hosted runner for repositories that need Docker-based jobs. The image registers a runner when the container starts and removes that runner registration during normal container shutdown.
 
-## Quick Start
+## Linux Quick Start
+
+`latest` and `2.335.1` are multi-OS tags. Docker selects the Linux image on Linux Docker hosts and the Windows image on Windows Docker hosts when both platform images are present in the manifest.
 
 Create the external network used by the sample Compose file:
 
@@ -36,6 +38,43 @@ docker compose up -d
 
 Use `bestony/actions-runner:2.335.1` instead of `latest` when you want to pin the image to the current runner version. Production deployments should pin to a version tag instead of `latest`. The default Compose file starts multiple runner replicas and mounts the host Docker socket so workflows can build or run containers.
 
+## Windows Quick Start
+
+Windows runner containers require a Windows Docker host running Windows containers. They cannot run on a Linux Docker host. The default Windows image is based on `mcr.microsoft.com/windows/servercore:ltsc2022`, so the host must be compatible with Windows Server 2022 containers. Use `--isolation=hyperv` instead of `--isolation=process` when your host/container version combination requires Hyper-V isolation.
+
+Run a single Windows runner:
+
+```powershell
+docker run -d `
+  --name actions-runner `
+  --restart unless-stopped `
+  --isolation=process `
+  -e RUNNER_URL=https://github.com/<owner>/<repo> `
+  -e RUNNER_REGISTRATION_TOKEN=<token-from-config-cmd-command> `
+  --mount type=npipe,source=\\.\pipe\docker_engine,target=\\.\pipe\docker_engine `
+  bestony/actions-runner:latest
+```
+
+Or use the Windows Compose example:
+
+```powershell
+docker compose -f docker-compose.windows.yml up -d
+```
+
+The Windows image registers and runs a self-hosted runner only. It does not include the Linux cache-server binary patch, does not mount `/var/run/docker.sock`, and does not preinstall large toolchains such as Visual Studio Build Tools. Windows Docker workflows that need Docker access should use the Windows Docker named pipe mount shown above.
+
+## Platform Support
+
+| OS | Docker platform | GitHub runner asset | Support |
+| --- | --- | --- | --- |
+| Linux | `linux/amd64` | `actions-runner-linux-x64` | Stable |
+| Linux | `linux/arm64` | `actions-runner-linux-arm64` | Stable |
+| Linux | `linux/arm/v7` | `actions-runner-linux-arm` | Stable |
+| Windows Server Core LTSC 2022 | `windows/amd64` | `actions-runner-win-x64` | Stable |
+| Windows Server Core LTSC 2022 | `windows/arm64` | `actions-runner-win-arm64` | Experimental |
+
+Windows ARM64 Dockerfile and CI paths exist, but publishing is best-effort. If the Windows Server Core base image or the GitHub-hosted Windows build environment does not support `windows/arm64`, CI skips that platform in the unified manifest.
+
 ## Configuration
 
 Required variables:
@@ -58,6 +97,8 @@ Official command mapping:
 | --- | --- |
 | `./config.sh --url https://github.com/<owner>/<repo>` | `RUNNER_URL=https://github.com/<owner>/<repo>` or `REPO=<owner>/<repo>` |
 | `./config.sh --token <registration-token>` | `RUNNER_REGISTRATION_TOKEN=<registration-token>` or legacy `TOKEN=<registration-token>` |
+| `.\config.cmd --url https://github.com/<owner>/<repo>` | `RUNNER_URL=https://github.com/<owner>/<repo>` or `REPO=<owner>/<repo>` |
+| `.\config.cmd --token <registration-token>` | `RUNNER_REGISTRATION_TOKEN=<registration-token>` or legacy `TOKEN=<registration-token>` |
 
 Optional variables:
 
@@ -69,6 +110,7 @@ Optional variables:
 | `RUNNER_WORKDIR` | `_work` | Runner working directory. |
 | `RUNNER_EPHEMERAL` | `false` | Set to `true` to pass `--ephemeral` to `config.sh`. |
 | `RUNNER_REPLICAS` | `4` | Compose replica count for the sample deployment. |
+| `WINDOWS_CONTAINER_ISOLATION` | `process` | Windows Compose isolation mode. Use `hyperv` when host/container version compatibility requires it. |
 | `RUNNER_RESERVED_CPUS` | `0.5` | Compose CPU reservation. |
 | `RUNNER_RESERVED_MEMORY` | `1024M` | Compose memory reservation. |
 | `RUNNER_LIMIT_CPUS` | `2.0` | Compose CPU limit. |
@@ -81,6 +123,9 @@ Build-time arguments:
 | `RUNNER_VERSION` | `2.335.1` | GitHub Actions runner version to download. |
 | `RUNNER_X64_SHA256` | x64 runner tarball SHA-256 for the default version | Supply the matching checksum when overriding `RUNNER_VERSION`. |
 | `RUNNER_ARM64_SHA256` | arm64 runner tarball SHA-256 for the default version | Supply the matching checksum when overriding `RUNNER_VERSION`. |
+| `RUNNER_ARM_SHA256` | arm runner tarball SHA-256 for the default version | Supply the matching checksum when overriding `RUNNER_VERSION`. |
+| `RUNNER_WIN_X64_SHA256` | Windows x64 runner zip SHA-256 for the default version | Supply the matching checksum when overriding `RUNNER_VERSION`. |
+| `RUNNER_WIN_ARM64_SHA256` | Windows arm64 runner zip SHA-256 for the default version | Supply the matching checksum when overriding `RUNNER_VERSION`. |
 | `NODE_VERSION` | `22.13.0` | Node.js version installed with nvm. |
 
 Example build:
@@ -90,6 +135,27 @@ docker build \
   --build-arg RUNNER_VERSION=2.335.1 \
   -t actions-runner:test .
 ```
+
+Linux platform builds:
+
+```bash
+docker build --platform linux/amd64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-amd64 .
+docker build --platform linux/arm64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm64 .
+docker build --platform linux/arm/v7 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm-v7 .
+```
+
+Windows build on a compatible Windows Docker host:
+
+```powershell
+docker build `
+  -f Dockerfile.windows `
+  --build-arg TARGETARCH=amd64 `
+  --build-arg RUNNER_VERSION=2.335.1 `
+  -t actions-runner:windows-ltsc2022-amd64 `
+  .
+```
+
+Experimental Windows ARM64 builds use `--platform windows/arm64 --build-arg TARGETARCH=arm64` and only work when the base image and Docker host support that platform.
 
 ## Registration Token
 
@@ -124,6 +190,8 @@ Never commit real `.env` files, tokens, OAuth credentials, or database connectio
 
 Mounting `/var/run/docker.sock` gives workflows broad control over the host Docker daemon. A workflow that can run arbitrary Docker commands through this socket can usually gain host-level control. Only use this image with repositories, workflows, and contributors you trust.
 
+Mounting `\\.\pipe\docker_engine` into a Windows runner container gives workflows broad control over the Windows host Docker daemon. Treat it with the same level of trust as the Linux Docker socket.
+
 Self-hosted runners execute code from your workflows. GitHub recommends using self-hosted runners only with private repositories, because forks of public repositories can run dangerous code on the runner machine through pull requests. Be cautious with private or internal repositories that allow fork-based pull requests too.
 
 Avoid attaching highly privileged tokens, cloud credentials, or production secrets to repositories that run untrusted pull requests.
@@ -132,9 +200,11 @@ The startup script does not print the registration token. It only logs non-sensi
 
 ## Cache Server
 
-The sample Compose file includes `ghcr.io/falcondev-oss/github-actions-cache-server`. The image patches `Runner.Worker.dll` from `ACTIONS_RESULTS_URL` to `ACTIONS_RESULTS_ORL` to match that cache server's expected environment variable name. This is a compatibility workaround and should be checked whenever `RUNNER_VERSION` changes.
+The Linux sample Compose file includes `ghcr.io/falcondev-oss/github-actions-cache-server`. The Linux image patches `Runner.Worker.dll` from `ACTIONS_RESULTS_URL` to `ACTIONS_RESULTS_ORL` to match that cache server's expected environment variable name. This is a compatibility workaround and should be checked whenever `RUNNER_VERSION` changes.
 
 To disable the cache service, remove the `cache` service from `docker-compose.yml` and unset `ACTIONS_RESULTS_URL`.
+
+The Windows image does not include this cache-server patch. Use GitHub's default cache behavior on Windows unless you build and validate a Windows-specific cache integration.
 
 ## Scaling
 
@@ -156,10 +226,17 @@ Published images use these tags:
 
 | Tag | Meaning |
 | --- | --- |
-| `latest` | Current image built from the default branch. |
-| `<runner-version>` | Current image for the configured GitHub Actions runner version, for example `2.335.1`. |
-| `<git-sha>` | Image built from a specific commit. |
-| `v*` | Release tag builds, when pushed. |
+| `latest` | Multi-OS manifest for the current image built from the default branch. |
+| `<runner-version>` | Multi-OS manifest for the configured GitHub Actions runner version, for example `2.335.1`. |
+| `<git-sha>` | Multi-OS manifest built from a specific commit. |
+| `v*` | Multi-OS release tag manifest, when pushed. |
+| `<runner-version>-linux-amd64` | Linux platform image used as a manifest source. |
+| `<runner-version>-linux-arm64` | Linux platform image used as a manifest source. |
+| `<runner-version>-linux-arm-v7` | Linux platform image used as a manifest source. |
+| `<runner-version>-windows-ltsc2022-amd64` | Windows platform image used as a manifest source. |
+| `<runner-version>-windows-ltsc2022-arm64` | Experimental Windows ARM64 platform image, published only when the build environment supports it. |
+
+The unified manifest includes Linux amd64, Linux arm64, Linux arm/v7, and Windows amd64 when those platform builds succeed. Windows ARM64 is included only when the experimental build succeeds.
 
 ## Local Verification
 
@@ -171,7 +248,19 @@ docker compose config
 docker build --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test .
 docker build --platform linux/amd64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-amd64 .
 docker build --platform linux/arm64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm64 .
+docker build --platform linux/arm/v7 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm-v7 .
+pwsh -NoProfile -Command '$null = [scriptblock]::Create((Get-Content .\start.ps1 -Raw))'
 ```
+
+On a compatible Windows Docker host:
+
+```powershell
+docker compose -f docker-compose.windows.yml config
+docker build -f Dockerfile.windows --build-arg TARGETARCH=amd64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-windows-amd64 .
+docker build -f Dockerfile.windows --platform windows/arm64 --build-arg TARGETARCH=arm64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-windows-arm64 .
+```
+
+The Windows ARM64 build is experimental; a base-image or Docker-host platform failure should be recorded as an environment limitation rather than treated as a Windows x64 release blocker.
 
 ## Troubleshooting
 
@@ -188,6 +277,10 @@ Runner registration fails with an authentication error: registration tokens expi
 Runner remains visible in GitHub after container shutdown: cleanup may fail if the container is force-killed, loses network access, or the registration token has expired. Remove stale runners from the repository or organization self-hosted runner settings.
 
 DockerHub tag is missing or still points to an older image: check whether the Docker CI workflow for the default branch has completed successfully. Until the workflow publishes, use a commit SHA tag that exists or build locally.
+
+Windows container fails to start on a Linux host: Windows containers require a Windows Docker host in Windows containers mode. Use the Linux image on Linux hosts.
+
+Windows container fails with an OS version compatibility error: use a Windows host compatible with `servercore:ltsc2022`, switch to Hyper-V isolation if your environment supports it, or build a matching Windows base-image variant.
 
 Container logs should never contain your registration token. If a token appears in logs, rotate it immediately and open a security report.
 
