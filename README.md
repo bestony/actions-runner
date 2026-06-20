@@ -16,13 +16,25 @@ Create a local `.env` from the example and fill in your repository and self-host
 cp .env.example .env
 ```
 
+Run a single runner with the prebuilt Docker image:
+
+```bash
+docker run -d \
+  --name actions-runner \
+  --restart unless-stopped \
+  -e REPO=<owner>/<repo> \
+  -e TOKEN=<your-github-runner-registration-token> \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  bestony/actions-runner:latest
+```
+
 Start the cache service and runner:
 
 ```bash
 docker compose up -d
 ```
 
-The default Compose file starts multiple runner replicas and mounts the host Docker socket so workflows can build or run containers.
+Use `bestony/actions-runner:2.335.1` instead of `latest` when you want to pin the image to the current runner version. The default Compose file starts multiple runner replicas and mounts the host Docker socket so workflows can build or run containers.
 
 ## Configuration
 
