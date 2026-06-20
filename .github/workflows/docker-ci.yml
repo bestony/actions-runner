@@ -93,6 +93,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Start Docker daemon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $service = Get-Service -Name docker -ErrorAction Stop
+          if ($service.Status -ne "Running") {
+            Start-Service -Name docker
+          }
+
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+              docker version
+              exit 0
+            } catch {
+              Write-Host "Docker daemon is not ready yet; retrying in 5 seconds. Attempt $attempt of 12."
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          throw "Docker daemon did not become ready."
+
       - name: Validate Windows Compose file
         shell: pwsh
         run: docker compose -f docker-compose.windows.yml config
@@ -131,6 +153,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Start Docker daemon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $service = Get-Service -Name docker -ErrorAction Stop
+          if ($service.Status -ne "Running") {
+            Start-Service -Name docker
+          }
+
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+              docker version
+              exit 0
+            } catch {
+              Write-Host "Docker daemon is not ready yet; retrying in 5 seconds. Attempt $attempt of 12."
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          throw "Docker daemon did not become ready."
 
       - name: Login to DockerHub
         if: github.event_name != 'pull_request'
