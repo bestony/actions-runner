@@ -127,6 +127,15 @@ function ConvertTo-NormalizedBool {
     }
 }
 
+function Quote-CmdArgumentValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Value
+    )
+
+    return '"' + $Value + '"'
+}
+
 function Get-DefaultRunnerName {
     if (-not [string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) {
         return $env:COMPUTERNAME
@@ -170,7 +179,7 @@ if ($RunnerEphemeral) {
 }
 
 if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_LABELS)) {
-    $configArgs += @('--labels', $env:RUNNER_LABELS)
+    $configArgs += @('--labels', (Quote-CmdArgumentValue -Value $env:RUNNER_LABELS))
 }
 
 $exitCode = 0
