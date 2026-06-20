@@ -242,3 +242,4 @@ Test-LegacyVariables
 Test-PatRejected
 
 Write-Host 'Windows startup script tests passed.'
+exit 0
