@@ -85,7 +85,16 @@ function New-FakeRunner {
 
     @'
 @echo off
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Add-Content -LiteralPath $env:RUNNER_TEST_LOG -Value 'config'; foreach ($arg in $args) { Add-Content -LiteralPath $env:RUNNER_TEST_LOG -Value $arg }; Add-Content -LiteralPath $env:RUNNER_TEST_LOG -Value 'end'" %*
+setlocal EnableExtensions EnableDelayedExpansion
+>> "%RUNNER_TEST_LOG%" echo(config
+:args
+if "%~1"=="" goto done
+set "runner_arg=%~1"
+>> "%RUNNER_TEST_LOG%" echo(!runner_arg!
+shift
+goto args
+:done
+>> "%RUNNER_TEST_LOG%" echo(end
 exit /b 0
 '@ | Set-Content -LiteralPath (Join-Path $RunnerHome 'config.cmd') -Encoding ASCII
 
