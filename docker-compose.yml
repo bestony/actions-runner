@@ -2,24 +2,31 @@ services:
   runner:
     image: bestony/actions-runner:latest
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     networks:
       - runner
     environment:
-      - REPO=<owner>/<repo>
-      - TOKEN=<your-github-personal-access-token>
-      - ACTIONS_RESULTS_URL=http://cache:3000/
+      REPO: ${REPO:-<owner>/<repo>}
+      TOKEN: ${TOKEN:-<your-github-runner-registration-token>}
+      ACTIONS_RESULTS_URL: ${ACTIONS_RESULTS_URL:-http://cache:3000/}
+      RUNNER_NAME: ${RUNNER_NAME:-}
+      RUNNER_LABELS: ${RUNNER_LABELS:-}
+      RUNNER_WORKDIR: ${RUNNER_WORKDIR:-_work}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       mode: replicated
-      replicas: 4
+      replicas: ${RUNNER_REPLICAS:-4}
       resources:
         reservations:
-          cpus: 0.5
-          memory: 1024
+          cpus: "${RUNNER_RESERVED_CPUS:-0.5}"
+          memory: ${RUNNER_RESERVED_MEMORY:-1024M}
         limits:
-          cpus: '2.0'    # 即使服务器有 12 线程，单个容器最多也只能用 2 核的量
-          memory: 4096M  # 单个容器最多用 4GB，超过就会被重启，保护宿主机
+          cpus: "${RUNNER_LIMIT_CPUS:-2.0}"
+          memory: ${RUNNER_LIMIT_MEMORY:-4096M}
+
   cache:
     container_name: cache
     image: ghcr.io/falcondev-oss/github-actions-cache-server:latest

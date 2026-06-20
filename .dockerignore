@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.gitlock
+
+*.log
+*.tmp
+.DS_Store
+
+README.md
+CONTRIBUTING.md
+SECURITY.md

@@ -1,42 +1,93 @@
 FROM ubuntu:24.04
 
 ARG RUNNER_VERSION="2.335.1"
-
-# Prevents installdependencies.sh from prompting the user and blocking the image creation
+ARG TARGETARCH
+ARG RUNNER_X64_SHA256="4ef2f25285f0ae4477f1fe1e346db76d2f3ebf03824e2ddd1973a2819bf6c8cf"
+ARG RUNNER_ARM64_SHA256="6d1e85bfd1a506a8b17c1f1b9b57dba458ffed90898799aaa9f599520b0d9207"
+ARG NODE_VERSION="22.13.0"
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt update -y && apt upgrade -y && useradd -m docker
-RUN apt install -y --no-install-recommends \
-    curl jq build-essential libssl-dev libffi-dev libicu-dev python3 python3-venv python3-dev python3-pip git unzip libasound2t64 pulseaudio
+LABEL org.opencontainers.image.title="Dockerized GitHub Actions Runner" \
+      org.opencontainers.image.description="Ubuntu-based self-hosted GitHub Actions runner for Docker workloads." \
+      org.opencontainers.image.source="https://github.com/bestony/actions-runner" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${RUNNER_VERSION}"
 
-# playwright deps
-RUN apt install -y libglib2.0-0t64 libnss3 libnspr4 libdbus-1-3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxcb1 libxkbcommon0 libatspi2.0-0t64 libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        libasound2t64 \
+        libatk-bridge2.0-0t64 \
+        libatk1.0-0t64 \
+        libatspi2.0-0t64 \
+        libcairo2 \
+        libcups2t64 \
+        libdbus-1-3 \
+        libdrm2 \
+        libffi-dev \
+        libgbm1 \
+        libglib2.0-0t64 \
+        libicu-dev \
+        libnspr4 \
+        libnss3 \
+        libpango-1.0-0 \
+        libssl-dev \
+        libx11-6 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        libxcb1 \
+        pulseaudio \
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-venv \
+        unzip \
+    && useradd --create-home docker \
+    && mkdir -p /home/docker/actions-runner \
+    && case "${TARGETARCH}" in \
+        amd64) runner_arch="x64"; runner_sha256="${RUNNER_X64_SHA256}" ;; \
+        arm64) runner_arch="arm64"; runner_sha256="${RUNNER_ARM64_SHA256}" ;; \
+        *) echo "Unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl --fail --silent --show-error --location \
+        --output /tmp/actions-runner.tar.gz \
+        "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${runner_arch}-${RUNNER_VERSION}.tar.gz" \
+    && echo "${runner_sha256}  /tmp/actions-runner.tar.gz" | sha256sum --check --strict \
+    && tar --extract --gzip --file /tmp/actions-runner.tar.gz --directory /home/docker/actions-runner \
+    && rm /tmp/actions-runner.tar.gz \
+    && /home/docker/actions-runner/bin/installdependencies.sh \
+    && chown -R docker:docker /home/docker \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN cd /home/docker && mkdir actions-runner && cd actions-runner \
-    && curl -O -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz \
-    && tar xzf ./actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
-
-RUN chown -R docker /home/docker && /home/docker/actions-runner/bin/installdependencies.sh
-
+# Workaround for github-actions-cache-server: it reads ACTIONS_RESULTS_ORL
+# while GitHub's runner binary uses ACTIONS_RESULTS_URL. This binary patch
+# keeps compatibility with that cache server and should be revisited on runner
+# upgrades.
 RUN sed -i 's/\x41\x00\x43\x00\x54\x00\x49\x00\x4F\x00\x4E\x00\x53\x00\x5F\x00\x52\x00\x45\x00\x53\x00\x55\x00\x4C\x00\x54\x00\x53\x00\x5F\x00\x55\x00\x52\x00\x4C\x00/\x41\x00\x43\x00\x54\x00\x49\x00\x4F\x00\x4E\x00\x53\x00\x5F\x00\x52\x00\x45\x00\x53\x00\x55\x00\x4C\x00\x54\x00\x53\x00\x5F\x00\x4F\x00\x52\x00\x4C\x00/g' /home/docker/actions-runner/bin/Runner.Worker.dll
 
-COPY start.sh start.sh
+COPY --chown=docker:docker start.sh /home/docker/start.sh
+RUN chmod +x /home/docker/start.sh
 
-# make the script executable
-RUN chmod +x start.sh
-
-# since the config and run script for actions are not allowed to be run by root,
-# set the user to "docker" so all subsequent commands are run as the docker user
 USER docker
+WORKDIR /home/docker
 
-ENV NODE_VERSION=22.13.0
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-ENV NVM_DIR=/home/docker/.nvm
-RUN . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION}
-RUN . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}
-RUN . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}
-ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin/:${PATH}"
+ENV NODE_VERSION="${NODE_VERSION}" \
+    NVM_DIR="/home/docker/.nvm"
 
-RUN npm install --global yarn
+RUN curl --fail --silent --show-error --location https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
+    && . "${NVM_DIR}/nvm.sh" \
+    && nvm install "${NODE_VERSION}" \
+    && nvm alias default "${NODE_VERSION}" \
+    && npm install --global yarn
+
+ENV PATH="${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
 ENTRYPOINT ["./start.sh"]
