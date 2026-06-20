@@ -226,6 +226,8 @@ jobs:
       - linux
       - windows-amd64
       - windows-arm64
+    env:
+      DOCKERHUB_DESCRIPTION_TOKEN_CONFIGURED: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN != '' && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -274,10 +276,11 @@ jobs:
           done
 
       - name: Update Docker Hub description
+        if: ${{ env.DOCKERHUB_DESCRIPTION_TOKEN_CONFIGURED == 'true' }}
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN }}
           repository: ${{ env.IMAGE_NAME }}
           readme-filepath: ./README.md
           short-description: Ubuntu and Windows self-hosted GitHub Actions runner images for Docker workloads.
