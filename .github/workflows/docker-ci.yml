@@ -220,3 +220,12 @@ jobs:
             echo "Publishing manifest ${tag}"
             docker buildx imagetools create --tag "${tag}" "${sources[@]}"
           done
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_NAME }}
+          readme-filepath: ./README.md
+          short-description: Ubuntu and Windows self-hosted GitHub Actions runner images for Docker workloads.
