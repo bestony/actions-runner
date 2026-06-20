@@ -22,7 +22,7 @@ docker build --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test .
 
 Keep pull requests focused on one reversible change. Include enough context for reviewers to understand runner behavior, Docker image impact, and security tradeoffs.
 
-For changes that affect registration, cleanup, permissions, or Docker socket access, describe the failure mode you tested and confirm that logs do not expose `TOKEN`.
+For changes that affect registration, cleanup, permissions, or Docker socket access, describe the failure mode you tested and confirm that logs do not expose `RUNNER_REGISTRATION_TOKEN` or legacy `TOKEN`.
 
 ## Commit Messages
 

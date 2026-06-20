@@ -15,7 +15,7 @@ Include the affected image tag or commit SHA, reproduction steps, expected impac
 
 ## Secret Exposure
 
-If a token or credential is exposed, including this project's `TOKEN` registration token:
+If a token or credential is exposed, including this project's `RUNNER_REGISTRATION_TOKEN` or legacy `TOKEN` registration token:
 
 1. Revoke or rotate the token immediately.
 2. Remove any stale self-hosted runners from repository or organization settings.

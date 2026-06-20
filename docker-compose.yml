@@ -8,12 +8,15 @@ services:
     networks:
       - runner
     environment:
-      REPO: ${REPO:-<owner>/<repo>}
-      TOKEN: ${TOKEN:-<your-github-runner-registration-token>}
+      RUNNER_URL: ${RUNNER_URL:-}
+      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN:-}
+      REPO: ${REPO:-}
+      TOKEN: ${TOKEN:-}
       ACTIONS_RESULTS_URL: ${ACTIONS_RESULTS_URL:-http://cache:3000/}
       RUNNER_NAME: ${RUNNER_NAME:-}
       RUNNER_LABELS: ${RUNNER_LABELS:-}
       RUNNER_WORKDIR: ${RUNNER_WORKDIR:-_work}
+      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
