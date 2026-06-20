@@ -35,10 +35,17 @@ jobs:
       - name: Validate Linux Compose file
         run: docker compose config
 
-      - name: Check Windows startup script syntax
+      - name: Check Windows PowerShell syntax
         shell: pwsh
         run: |
-          $null = [scriptblock]::Create((Get-Content .\start.ps1 -Raw))
+          $scripts = @(
+            ".\start.ps1",
+            ".\scripts\install-runner-windows.ps1"
+          )
+
+          foreach ($script in $scripts) {
+            $null = [scriptblock]::Create((Get-Content $script -Raw))
+          }
 
   linux:
     runs-on: ubuntu-latest

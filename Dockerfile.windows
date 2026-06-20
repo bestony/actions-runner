@@ -16,26 +16,8 @@ SHELL ["powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Co
 
 WORKDIR C:\actions-runner
 
-RUN $ErrorActionPreference = 'Stop'; `
-    if ($env:TARGETARCH -eq 'amd64') { `
-        $runnerArch = 'x64'; `
-        $runnerSha256 = $env:RUNNER_WIN_X64_SHA256; `
-    } elseif ($env:TARGETARCH -eq 'arm64') { `
-        $runnerArch = 'arm64'; `
-        $runnerSha256 = $env:RUNNER_WIN_ARM64_SHA256; `
-    } else { `
-        throw "Unsupported target architecture: $env:TARGETARCH"; `
-    }; `
-    $runnerZip = 'C:\actions-runner.zip'; `
-    $runnerUrl = "https://github.com/actions/runner/releases/download/v$($env:RUNNER_VERSION)/actions-runner-win-$runnerArch-$($env:RUNNER_VERSION).zip"; `
-    Write-Host "Downloading $runnerUrl"; `
-    Invoke-WebRequest -UseBasicParsing -Uri $runnerUrl -OutFile $runnerZip; `
-    $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $runnerZip).Hash.ToLowerInvariant(); `
-    if ($actualSha256 -ne $runnerSha256.ToLowerInvariant()) { `
-        throw ('Checksum mismatch for {0}. Expected {1} but got {2}.' -f $runnerZip, $runnerSha256, $actualSha256); `
-    }; `
-    Expand-Archive -LiteralPath $runnerZip -DestinationPath 'C:\actions-runner' -Force; `
-    Remove-Item -LiteralPath $runnerZip -Force
+COPY scripts/install-runner-windows.ps1 C:/actions-runner/install-runner.ps1
+RUN .\install-runner.ps1
 
 COPY start.ps1 C:/actions-runner/start.ps1
 
