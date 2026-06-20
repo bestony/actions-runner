@@ -32,7 +32,7 @@ RUN $ErrorActionPreference = 'Stop'; `
     Invoke-WebRequest -UseBasicParsing -Uri $runnerUrl -OutFile $runnerZip; `
     $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $runnerZip).Hash.ToLowerInvariant(); `
     if ($actualSha256 -ne $runnerSha256.ToLowerInvariant()) { `
-        throw "Checksum mismatch for $runnerZip. Expected $runnerSha256 but got $actualSha256."; `
+        throw ('Checksum mismatch for {0}. Expected {1} but got {2}.' -f $runnerZip, $runnerSha256, $actualSha256); `
     }; `
     Expand-Archive -LiteralPath $runnerZip -DestinationPath 'C:\actions-runner' -Force; `
     Remove-Item -LiteralPath $runnerZip -Force
