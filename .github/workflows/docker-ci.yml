@@ -226,8 +226,6 @@ jobs:
       - linux
       - windows-amd64
       - windows-arm64
-    env:
-      DOCKERHUB_DESCRIPTION_TOKEN_CONFIGURED: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN != '' && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -275,8 +273,19 @@ jobs:
             docker buildx imagetools create --tag "${tag}" "${sources[@]}"
           done
 
+      - name: Validate Docker Hub description token
+        shell: bash
+        env:
+          DOCKERHUB_DESCRIPTION_TOKEN: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -z "${DOCKERHUB_DESCRIPTION_TOKEN}" ]]; then
+            echo "::error title=Missing Docker Hub description token::Add the GitHub secret DOCKERHUB_DESCRIPTION_TOKEN. Use a Docker Hub PAT with read/write/delete scope from a user with Admin permission on ${IMAGE_NAME}."
+            exit 1
+          fi
+
       - name: Update Docker Hub description
-        if: ${{ env.DOCKERHUB_DESCRIPTION_TOKEN_CONFIGURED == 'true' }}
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
