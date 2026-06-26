@@ -19,6 +19,8 @@ services:
       RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-998}"
     deploy:
       mode: replicated
       replicas: ${RUNNER_REPLICAS:-4}

@@ -24,6 +24,7 @@ Run a single runner with the prebuilt Docker image:
 docker run -d \
   --name actions-runner \
   --restart unless-stopped \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   -e RUNNER_URL=https://github.com/<owner>/<repo> \
   -e RUNNER_REGISTRATION_TOKEN=<token-from-config-sh-command> \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -37,6 +38,14 @@ docker compose up -d
 ```
 
 Use `bestony/actions-runner:2.335.1` instead of `latest` when you want to pin the image to the current runner version. Production deployments should pin to a version tag instead of `latest`. The default Compose file starts multiple runner replicas and mounts the host Docker socket so workflows can build or run containers.
+
+Linux runners support Docker by using the host Docker daemon through `/var/run/docker.sock`. The image includes Docker client tooling only: `docker`, Buildx, and the Docker Compose plugin. It does not install or start `dockerd` inside the runner container.
+
+For Compose deployments, set `DOCKER_GID` in `.env` to the host socket group id when it differs from the default:
+
+```bash
+DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+```
 
 ## Windows Quick Start
 
@@ -111,6 +120,7 @@ Optional variables:
 | `RUNNER_EPHEMERAL` | `false` | Set to `true` to pass `--ephemeral` to `config.sh`. |
 | `RUNNER_REPLICAS` | `4` | Compose replica count for the sample deployment. |
 | `WINDOWS_CONTAINER_ISOLATION` | `process` | Windows Compose isolation mode. Use `hyperv` when host/container version compatibility requires it. |
+| `DOCKER_GID` | `998` | Host Docker socket group id used by Linux Compose deployments. Set it with `stat -c '%g' /var/run/docker.sock` when Docker commands fail with socket permission errors. |
 | `RUNNER_RESERVED_CPUS` | `0.5` | Compose CPU reservation. |
 | `RUNNER_RESERVED_MEMORY` | `1024M` | Compose memory reservation. |
 | `RUNNER_LIMIT_CPUS` | `2.0` | Compose CPU limit. |
@@ -244,8 +254,11 @@ Run the same checks used by CI:
 
 ```bash
 shellcheck start.sh
+bash tests/start-linux.sh
 docker compose config
 docker build --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test .
+docker run --rm --entrypoint docker actions-runner:test --version
+docker run --rm --entrypoint docker actions-runner:test compose version
 docker build --platform linux/amd64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-amd64 .
 docker build --platform linux/arm64 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm64 .
 docker build --platform linux/arm/v7 --build-arg RUNNER_VERSION=2.335.1 -t actions-runner:test-arm-v7 .
@@ -273,6 +286,8 @@ Runner registration fails with an authentication error: registration tokens expi
 `POST https://api.github.com/actions/runner-registration 404`: this usually means the registration token expired, the token scope does not match `RUNNER_URL`, the image is old enough to be incompatible with GitHub's current runner registration flow, or the value passed as the token is the wrong token type.
 
 `docker compose config` fails on resource fields: memory values must include units such as `1024M` or `1G`; CPU values are quoted strings in this repository's sample file.
+
+Docker commands fail with `permission denied` on `/var/run/docker.sock`: set `DOCKER_GID` in `.env` to the host socket group id with `stat -c '%g' /var/run/docker.sock`, then recreate the runner container. For single-container `docker run`, pass `--group-add "$(stat -c '%g' /var/run/docker.sock)"`.
 
 Runner remains visible in GitHub after container shutdown: cleanup may fail if the container is force-killed, loses network access, or the registration token has expired. Remove stale runners from the repository or organization self-hosted runner settings.
 
